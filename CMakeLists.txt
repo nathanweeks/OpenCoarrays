@@ -231,7 +231,8 @@ endif()
 
 find_package( MPI )
 
-if ( (NOT MPI_C_FOUND) OR (NOT MPI_Fortran_FOUND) OR (NOT MPIEXEC))
+# if ( (NOT MPI_C_FOUND) OR (NOT MPI_Fortran_FOUND) OR (NOT MPIEXEC))
+if ( (NOT MPI_C_FOUND) OR (NOT MPIEXEC))
   # Get default install location of MPICH from install.sh
   execute_process( COMMAND "./install.sh" -P mpich
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
@@ -246,7 +247,7 @@ if ( (NOT MPI_C_FOUND) OR (NOT MPI_Fortran_FOUND) OR (NOT MPIEXEC))
   set ( MPI_HOME "${MPI_HOME}" "${MY_MPI_EXEC}" "${MY_MPI_EXEC}/.." )
   find_package( MPI REQUIRED )
 endif()
-list(REMOVE_DUPLICATES MPI_Fortran_INCLUDE_PATH)
+# list(REMOVE_DUPLICATES MPI_Fortran_INCLUDE_PATH)
 
 # Test for consistent MPI environment
 if (NOT MPIEXEC)
@@ -293,7 +294,8 @@ endif()
 #-----------------------------------------------
 # Work around bug #317 present on fedora systems
 #-----------------------------------------------
-if( (MPI_C_LINK_FLAGS MATCHES "noexecstack") OR (MPI_Fortran_LINK_FLAGS MATCHES "noexecstack") )
+# if( (MPI_C_LINK_FLAGS MATCHES "noexecstack") OR (MPI_Fortran_LINK_FLAGS MATCHES "noexecstack") )
+if( (MPI_C_LINK_FLAGS MATCHES "noexecstack") )
   message ( WARNING
 "The `noexecstack` linker flag was found in the MPI_<lang>_LINK_FLAGS variable. This is
 known to cause segmentation faults for some Fortran codes. See, e.g.,
@@ -304,12 +306,12 @@ https://github.com/sourceryinstitute/OpenCoarrays/issues/317.
     )
   string(REPLACE "noexecstack"
     "execstack" MPI_C_LINK_FLAGS_FIXED ${MPI_C_LINK_FLAGS})
-  string(REPLACE "noexecstack"
-    "execstack" MPI_Fortran_LINK_FLAGS_FIXED ${MPI_Fortran_LINK_FLAGS})
+  # string(REPLACE "noexecstack"
+  #   "execstack" MPI_Fortran_LINK_FLAGS_FIXED ${MPI_Fortran_LINK_FLAGS})
   set(MPI_C_LINK_FLAGS "${MPI_C_LINK_FLAGS_FIXED}" CACHE STRING
     "MPI C linking flags" FORCE)
-  set(MPI_Fortran_LINK_FLAGS "${MPI_Fortran_LINK_FLAGS_FIXED}" CACHE STRING
-    "MPI Fortran linking flags" FORCE)
+  # set(MPI_Fortran_LINK_FLAGS "${MPI_Fortran_LINK_FLAGS_FIXED}" CACHE STRING
+  #   "MPI Fortran linking flags" FORCE)
 endif()
 
 #--------------------------------------------------------
@@ -442,9 +444,12 @@ endif()
 #----------------
 set(CMAKE_C_COMPILE_FLAGS ${CMAKE_C_COMPILE_FLAGS} ${MPI_C_COMPILE_FLAGS})
 set(CMAKE_C_LINK_FLAGS ${CMAKE_C_LINK_FLAGS} ${MPI_C_LINK_FLAGS})
-set(CMAKE_Fortran_COMPILE_FLAGS ${CMAKE_Fortran_COMPILE_FLAGS} ${MPI_Fortran_COMPILE_FLAGS})
-set(CMAKE_Fortran_LINK_FLAGS ${CMAKE_Fortran_LINK_FLAGS} ${MPI_Fortran_LINK_FLAGS})
+# set(CMAKE_Fortran_COMPILE_FLAGS ${CMAKE_Fortran_COMPILE_FLAGS} ${MPI_Fortran_COMPILE_FLAGS})
+# set(CMAKE_Fortran_LINK_FLAGS ${CMAKE_Fortran_LINK_FLAGS} ${MPI_Fortran_LINK_FLAGS})
+# include_directories(BEFORE ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH})
+set(CMAKE_Fortran_LINK_FLAGS ${CMAKE_Fortran_LINK_FLAGS} ${MPI_C_LINK_FLAGS})
 include_directories(BEFORE ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH})
+
 
 #---------------------------------------------------
 # Use standardized GNU install directory conventions
@@ -467,9 +472,9 @@ install(FILES "${CMAKE_SOURCE_DIR}/doc/man/man1/caf.1" "${CMAKE_SOURCE_DIR}/doc/
 # Define macro for compiling with caf wrapper script
 #---------------------------------------------------
 function(caf_compile_executable target main_depend)
-  foreach(includedir IN LISTS MPI_Fortran_INCLUDE_PATH)
-    set(includes ${includes} -I ${includedir})
-  endforeach()
+  # foreach(includedir IN LISTS MPI_Fortran_INCLUDE_PATH)
+  #   set(includes ${includes} -I ${includedir})
+  # endforeach()
   string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
   separate_arguments(config_Fortran_flags UNIX_COMMAND "${CMAKE_Fortran_FLAGS_${build_type}}")
   get_directory_property( DirDefs DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" COMPILE_DEFINITIONS )
@@ -640,7 +645,9 @@ if(opencoarrays_aware_compiler)
     message ( STATUS "Running Developer tests is enabled. Some tests may fail for open issues." )
   endif()
   # Unit tests targeting each libcaf_mpi function, argument, and branch of code
-  add_caf_test(initialize_mpi 2 initialize_mpi)
+  if ( NOT CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 8.0.0)
+    add_caf_test(initialize_mpi 2 initialize_mpi)
+  endif()
   add_caf_test(register 2 register)
   add_caf_test(register_vector 2 register_vector)
   add_caf_test(register_alloc_vector 2 register_alloc_vector)

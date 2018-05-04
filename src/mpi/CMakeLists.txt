@@ -3,9 +3,9 @@ if (NOT MPI_C_FOUND)
 
   set(CMAKE_C_COMPILE_FLAGS ${CMAKE_C_COMPILE_FLAGS} ${MPI_C_COMPILE_FLAGS})
   set(CMAKE_C_LINK_FLAGS ${CMAKE_C_LINK_FLAGS} ${MPI_C_LINK_FLAGS})
-  set(CMAKE_Fortran_COMPILE_FLAGS ${CMAKE_Fortran_COMPILE_FLAGS} ${MPI_Fortran_COMPILE_FLAGS})
-  set(CMAKE_Fortran_LINK_FLAGS ${CMAKE_Fortran_LINK_FLAGS} ${MPI_Fortran_LINK_FLAGS})
-  include_directories(BEFORE ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH})
+  # set(CMAKE_Fortran_COMPILE_FLAGS ${CMAKE_Fortran_COMPILE_FLAGS} ${MPI_Fortran_COMPILE_FLAGS})
+  # set(CMAKE_Fortran_LINK_FLAGS ${CMAKE_Fortran_LINK_FLAGS} ${MPI_Fortran_LINK_FLAGS})
+  # include_directories(BEFORE ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH})
 endif()
 
 #----------------------------------
@@ -145,16 +145,20 @@ if(HAVE_Intel_MPI AND WIN32)
 endif()
 set(CMAKE_REQUIRED_INCLUDES ${old_cmake_required_includes})
 
-add_library(opencoarrays_mod OBJECT ../extensions/opencoarrays.F90)
-set_target_properties(opencoarrays_mod
-  PROPERTIES
-  Fortran_MODULE_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}/${mod_dir_tail}"
-  POSITION_INDEPENDENT_CODE TRUE)
+# add_library(opencoarrays_mod OBJECT ../extensions/opencoarrays.F90)
+# set_target_properties(opencoarrays_mod
+#   PROPERTIES
+#   Fortran_MODULE_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}/${mod_dir_tail}"
+#   POSITION_INDEPENDENT_CODE TRUE)
 
-add_library(caf_mpi SHARED mpi_caf.c ../common/caf_auxiliary.c $<TARGET_OBJECTS:opencoarrays_mod>)
-add_library(caf_mpi_static STATIC  mpi_caf.c ../common/caf_auxiliary.c $<TARGET_OBJECTS:opencoarrays_mod>)
-target_link_libraries(caf_mpi PRIVATE ${MPI_C_LIBRARIES} ${MPI_Fortran_LIBRARIES})
-target_link_libraries(caf_mpi_static PRIVATE ${MPI_C_LIBRARIES} ${MPI_Fortran_LIBRARIES})
+# add_library(caf_mpi SHARED mpi_caf.c ../common/caf_auxiliary.c $<TARGET_OBJECTS:opencoarrays_mod>)
+# add_library(caf_mpi_static STATIC  mpi_caf.c ../common/caf_auxiliary.c $<TARGET_OBJECTS:opencoarrays_mod>)
+# target_link_libraries(caf_mpi PRIVATE ${MPI_C_LIBRARIES} ${MPI_Fortran_LIBRARIES})
+# target_link_libraries(caf_mpi_static PRIVATE ${MPI_C_LIBRARIES} ${MPI_Fortran_LIBRARIES})
+add_library(caf_mpi SHARED mpi_caf.c ../common/caf_auxiliary.c)
+add_library(caf_mpi_static STATIC  mpi_caf.c ../common/caf_auxiliary.c)
+target_link_libraries(caf_mpi PRIVATE ${MPI_C_LIBRARIES} )
+target_link_libraries(caf_mpi_static PRIVATE ${MPI_C_LIBRARIES} )
 
 set(CAF_SO_VERSION 0)
 if(gfortran_compiler)
@@ -174,15 +178,15 @@ set_target_properties ( caf_mpi
 )
 
 # Create a symlink in the include dir
-if(UNIX)
-  add_custom_command(TARGET caf_mpi
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink "./${mod_dir_tail}/opencoarrays.mod" "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}/opencoarrays.mod"
-    COMMENT "Creating symlink ${CMAKE_INSTALL_INCLUDEDIR}/opencoarrays.mod --> ${CMAKE_INSTALL_INCLUDEDIR}/${mod_dir_tail}/opencoarrays.mod")
-endif()
+# if(UNIX)
+#   add_custom_command(TARGET caf_mpi
+#     POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E create_symlink "./${mod_dir_tail}/opencoarrays.mod" "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}/opencoarrays.mod"
+#     COMMENT "Creating symlink ${CMAKE_INSTALL_INCLUDEDIR}/opencoarrays.mod --> ${CMAKE_INSTALL_INCLUDEDIR}/${mod_dir_tail}/opencoarrays.mod")
+# endif()
 
-install(DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-  FILES_MATCHING PATTERN "*.mod")
+# install(DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_INCLUDEDIR}/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+#   FILES_MATCHING PATTERN "*.mod")
 
 set_target_properties( caf_mpi_static
   PROPERTIES
@@ -219,17 +223,28 @@ set(Fortran_COMPILER "${CMAKE_Fortran_COMPILER}")
 set(CAF_MODDIR "${CMAKE_INSTALL_INCLUDEDIR}/${mod_dir_tail}")
 set(MOD_DIR_FLAG "${CMAKE_Fortran_MODDIR_FLAG}")
 set(CAF_MPI_LIBS "")
-foreach( lib IN LISTS MPI_Fortran_LIBRARIES)
+# foreach( lib IN LISTS MPI_Fortran_LIBRARIES)
+foreach( lib IN LISTS MPI_C_LIBRARIES)
   set(CAF_MPI_LIBS "${CAF_MPI_LIBS} \"${lib}\"")
 endforeach()
 string(STRIP "${MPI_LIBS}" MPI_LIBS)
+# set(CAF_MPI_Fortran_LINK_FLAGS "")
+# foreach( lflag IN LISTS MPI_Fortran_LINK_FLAGS)
+#   set(CAF_MPI_Fortran_LINK_FLAGS "${CAF_MPI_Fortran_LINK_FLAGS} ${lflag}" )
+# endforeach()
+# string(STRIP "${CAF_MPI_Fortran_LINK_FLAGS}" CAF_MPI_Fortran_LINK_FLAGS)
+# set(CAF_MPI_Fortran_COMPILE_FLAGS "")
+# foreach( fcflag IN LISTS MPI_Fortran_COMPILE_FLAGS)
+#   set(CAF_MPI_Fortran_COMPILE_FLAGS "${CAF_MPI_Fortran_COMPILE_FLAGS} ${fcflag}" )
+# endforeach()
+# string(STRIP "${CAF_MPI_Fortran_COMPILE_FLAGS}" CAF_MPI_Fortran_COMPILE_FLAGS)
 set(CAF_MPI_Fortran_LINK_FLAGS "")
-foreach( lflag IN LISTS MPI_Fortran_LINK_FLAGS)
+foreach( lflag IN LISTS MPI_C_LINK_FLAGS)
   set(CAF_MPI_Fortran_LINK_FLAGS "${CAF_MPI_Fortran_LINK_FLAGS} ${lflag}" )
 endforeach()
 string(STRIP "${CAF_MPI_Fortran_LINK_FLAGS}" CAF_MPI_Fortran_LINK_FLAGS)
 set(CAF_MPI_Fortran_COMPILE_FLAGS "")
-foreach( fcflag IN LISTS MPI_Fortran_COMPILE_FLAGS)
+foreach( fcflag IN LISTS MPI_C_COMPILE_FLAGS)
   set(CAF_MPI_Fortran_COMPILE_FLAGS "${CAF_MPI_Fortran_COMPILE_FLAGS} ${fcflag}" )
 endforeach()
 string(STRIP "${CAF_MPI_Fortran_COMPILE_FLAGS}" CAF_MPI_Fortran_COMPILE_FLAGS)

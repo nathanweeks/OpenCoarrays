@@ -1,4 +1,6 @@
-caf_compile_executable(initialize_mpi initialize_mpi.F90)
+if (NOT CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 8.0.0)
+  caf_compile_executable(initialize_mpi initialize_mpi.F90)
+endif()
 caf_compile_executable(register register.f90)
 set_target_properties(build_register
   PROPERTIES MIN_IMAGES 2)
