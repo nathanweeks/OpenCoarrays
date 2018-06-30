@@ -440,10 +440,10 @@ endif()
 #----------------
 # Setup MPI flags
 #----------------
-set(CMAKE_C_COMPILE_FLAGS ${CMAKE_C_COMPILE_FLAGS} ${MPI_C_COMPILE_FLAGS})
-set(CMAKE_C_LINK_FLAGS ${CMAKE_C_LINK_FLAGS} ${MPI_C_LINK_FLAGS})
-set(CMAKE_Fortran_COMPILE_FLAGS ${CMAKE_Fortran_COMPILE_FLAGS} ${MPI_Fortran_COMPILE_FLAGS})
-set(CMAKE_Fortran_LINK_FLAGS ${CMAKE_Fortran_LINK_FLAGS} ${MPI_Fortran_LINK_FLAGS})
+set(CMAKE_C_COMPILE_FLAGS "${CMAKE_C_COMPILE_FLAGS} ${MPI_C_COMPILE_FLAGS}")
+set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} ${MPI_C_LINK_FLAGS}")
+set(CMAKE_Fortran_COMPILE_FLAGS "${CMAKE_Fortran_COMPILE_FLAGS} ${MPI_Fortran_COMPILE_FLAGS}")
+set(CMAKE_Fortran_LINK_FLAGS "${CMAKE_Fortran_LINK_FLAGS} ${MPI_Fortran_LINK_FLAGS}")
 include_directories(BEFORE ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH})
 
 #---------------------------------------------------
@@ -786,6 +786,7 @@ if(opencoarrays_aware_compiler)
   add_caf_test(issue-488-multi-dim-cobounds-false 8 issue-488-multi-dim-cobounds false)
   add_caf_test(issue-503-multidim-array-broadcast 2 issue-503-multidim-array-broadcast)
   add_caf_test(issue-503-non-contig-red-ndarray   2 issue-503-non-contig-red-ndarray)
+  add_caf_test(issue-552-send_by_ref-singleton    2 issue-552-send_by_ref-singleton)
   if((gfortran_compiler AND (NOT CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 7.0.0)) OR (CAF_RUN_DEVELOPER_TESTS OR $ENV{OPENCOARRAYS_DEVELOPER}))
     add_caf_test(issue-515-mimic-mpi-gatherv 2 issue-515-mimic-mpi-gatherv)
   endif()
