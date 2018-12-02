@@ -481,9 +481,9 @@ failed_stopped_errorhandler_function (MPI_Comm* pcomm, int* perr, ...)
   comm = *pcomm;
 
   MPI_Error_class(*perr, &err);
-  if (err != MPIX_ERR_PROC_FAILED && err != MPIX_ERR_REVOKED)
+  if (err != MPIX_ERR_PROC_FAILED)
   {
-    /* We can handle PROC_FAILED and REVOKED ones only. */
+    /* We can handle PROC_FAILED only. */
     char errstr[MPI_MAX_ERROR_STRING];
     int errlen;
     MPI_Error_string(err, errstr, &errlen);
@@ -585,6 +585,7 @@ failed_stopped_errorhandler_function (MPI_Comm* pcomm, int* perr, ...)
     }
   }
 
+#if 0
 redo:
   dprint("Before shrink. \n");
   ierr = MPIX_Comm_shrink(*pcomm, &shrunk);
@@ -647,7 +648,7 @@ redo:
   /* Also free the old communicator before replacing it. */
   ierr = MPI_Comm_free(pcomm); chk_err(ierr);
   *pcomm = newcomm;
-
+#endif
   *perr = stopped ? STAT_STOPPED_IMAGE : STAT_FAILED_IMAGE;
 }
 #endif
@@ -8076,12 +8077,43 @@ void PREFIX(form_team) (int team_id, caf_team_t *team,
   void * tmp_team;
   MPI_Comm *newcomm;
   MPI_Comm *current_comm = &CAF_COMM_WORLD;
-  int ierr;
+  int ierr, flag;
 
+#ifdef WITH_FAILED_IMAGES
+  newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
+redo:
+  ierr = MPI_Comm_split(*current_comm, team_id, caf_this_image, newcomm);
+  flag = (ierr == MPI_SUCCESS);
+  flag = MPIX_Comm_agree(*newcomm, &flag);
+  if (MPI_SUCCESS != flag)
+  {
+      MPI_Group current_comm_group, failed_group, nonfailed_group;
+      int num_failed_in_group;
+      if (MPI_SUCCESS == ierr)
+      {
+          ierr = MPI_Comm_free(newcomm); chk_err(ierr);
+      }
+      // FIXME: don't redo this... 
+      ierr = MPIX_Comm_failure_ack(*current_comm); chk_err(ierr);
+      ierr = MPIX_Comm_failure_get_acked(*current_comm, &failed_group); chk_err(ierr);
+      ierr = MPI_Group_size(failed_group, &num_failed_in_group); chk_err(ierr);
+      dprint("%d images failed.\n", num_failed_in_group);
+      ierr = MPI_Group_size(*current_comm, &current_comm_group); chk_err(ierr);
+      ierr = MPI_Group_difference(current_comm_group, failed_group, &nonfailed_group); chk_err(ierr);
+      ierr = MPI_Comm_create_group(*current_comm, nonfailed_group, 0, newcomm); chk_err(ierr);
+      ierr = MPI_Group_free(&current_comm_group); chk_err(ierr);
+      ierr = MPI_Group_free(&nonfailed_group); chk_err(ierr);
+      ierr = MPI_Group_free(&failed_group); chk_err(ierr);
+      goto redo;
+  }
+  ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler);
+  chk_err(ierr);
+#else
   ierr = MPI_Barrier(CAF_COMM_WORLD); chk_err(ierr);
   newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
   ierr = MPI_Comm_split(*current_comm, team_id, caf_this_image, newcomm);
   chk_err(ierr);
+#endif
 
   tmp = calloc(1,sizeof(struct caf_teams_list));
   tmp->prev = teams_list;
