@@ -7952,7 +7952,7 @@ PREFIX(failed_images) (gfc_descriptor_t *array,
   int *ranks_failed, *ranks_of_failed_in_current_team;
 
   ierr = MPI_Comm_group(CAF_COMM_WORLD, &current_team_group); chk_err(ierr);
-  ierr = MPI_Group_intersection(*failed_in_comm_world_group, current_team_group, &failed_in_current_team_group);
+  ierr = MPI_Group_intersection(current_team_group, *failed_in_comm_world_group, &failed_in_current_team_group);
   chk_err(ierr);
   ierr = MPI_Group_size(failed_in_current_team_group, &num_failed_in_current_team); chk_err(ierr);
   ranks_of_failed_in_current_team = alloca(sizeof(int) * num_failed_in_current_team);
