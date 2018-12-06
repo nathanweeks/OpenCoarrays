@@ -263,7 +263,10 @@ const char unreachable[] = "Fatal error: unreachable alternative found.\n";
 int *image_stati;
 
 /* This gives the number of all images that are known to have failed. */
-int num_images_failed = 0;
+//int num_images_failed = 0;
+
+/* Group of all images known to have failed */
+MPI_Group *failed_in_comm_world_group;
 
 /* This is the number of all images that are known to have stopped. */
 int num_images_stopped = 0;
@@ -472,8 +475,8 @@ static void
 failed_stopped_errorhandler_function (MPI_Comm* pcomm, int* perr, ...)
 {
   MPI_Comm comm, shrunk, newcomm;
-  int num_failed_in_group, i, err, ierr;
-  MPI_Group comm_world_group, failed_group;
+  int num_failed_in_group, num_newly_failed_in_group, initial_team_num_images, i, err, ierr;
+  MPI_Group failed_group, newly_failed_group;
   int *ranks_of_failed_in_comm_world, *ranks_failed;
   int ns, srank, crank, rc, flag, drank, newrank;
   bool stopped = false;
@@ -501,8 +504,11 @@ failed_stopped_errorhandler_function (MPI_Comm* pcomm, int* perr, ...)
   ierr = MPIX_Comm_failure_ack(comm); chk_err(ierr);
   ierr = MPIX_Comm_failure_get_acked(comm, &failed_group); chk_err(ierr);
   ierr = MPI_Group_size(failed_group, &num_failed_in_group); chk_err(ierr);
+  ierr = MPI_Group_difference(failed_group, *failed_in_comm_world_group, &newly_failed_group);
+  ierr = MPI_Group_free(&failed_group); chk_err(ierr);
+  ierr = MPI_Group_size(newly_failed_group, &num_newly_failed_in_group); chk_err(ierr);
 
-  dprint("%d images failed.\n", num_failed_in_group);
+  dprint("%d images failed in current team (%d new failures).\n", num_failed_in_group, num_newly_failed_in_group);
   if (num_failed_in_group <= 0)
   {
     *perr = MPI_SUCCESS;
@@ -514,21 +520,31 @@ failed_stopped_errorhandler_function (MPI_Comm* pcomm, int* perr, ...)
     return;
   }
 
-  ierr = MPI_Comm_group(comm, &comm_world_group); chk_err(ierr);
-  ranks_of_failed_in_comm_world =
-    (int *) alloca(sizeof(int) * num_failed_in_group);
-  ranks_failed = (int *) alloca(sizeof(int) * num_failed_in_group);
-  for (i = 0; i < num_failed_in_group; ++i)
-  {
-    ranks_failed[i] = i;
+  if (num_newly_failed_in_group > 0) {
+    MPI_Group comm_world_group;
+    MPI_Group *new_failed_in_comm_world_group = (MPI_Group *)malloc(sizeof(MPI_Group));
+    ierr = MPI_Comm_group(MPI_COMM_WORLD, &comm_world_group); chk_err(ierr);
+    ierr = MPI_Group_size(comm_world_group, &initial_team_num_images); chk_err(ierr);
+    ranks_of_failed_in_comm_world =
+      (int *) alloca(sizeof(int) * num_newly_failed_in_group);
+    ranks_failed = (int *) alloca(sizeof(int) * num_newly_failed_in_group);
+    for (i = 0; i < num_newly_failed_in_group; ++i)
+    {
+      ranks_failed[i] = i;
+    }
+    /* Now translate the ranks of the failed images into communicator world. */
+    ierr = MPI_Group_translate_ranks(newly_failed_group, num_newly_failed_in_group,
+                                     ranks_failed, comm_world_group,
+                                     ranks_of_failed_in_comm_world);
+    chk_err(ierr);
+    ierr = MPI_Group_free(&comm_world_group); chk_err(ierr);
+    ierr = MPI_Group_union(*failed_in_comm_world_group, newly_failed_group, new_failed_in_comm_world_group);
+    ierr = MPI_Group_free(failed_in_comm_world_group); chk_err(ierr);
+    failed_in_comm_world_group = new_failed_in_comm_world_group;
   }
-  /* Now translate the ranks of the failed images into communicator world. */
-  ierr = MPI_Group_translate_ranks(failed_group, num_failed_in_group,
-                                   ranks_failed, comm_world_group,
-                                   ranks_of_failed_in_comm_world);
-  chk_err(ierr);
 
-  num_images_failed += num_failed_in_group;
+  ierr = MPI_Group_free(&newly_failed_group); chk_err(ierr);
+//num_images_failed += num_failed_in_group;
 
   if (!no_stopped_images_check_in_errhandler)
   {
@@ -570,10 +586,10 @@ failed_stopped_errorhandler_function (MPI_Comm* pcomm, int* perr, ...)
 
   /* TODO: Consider whether removing the failed image from images_full will be
    * necessary. This is more or less politics. */
-  for (i = 0; i < num_failed_in_group; ++i)
+  for (i = 0; i < num_newly_failed_in_group; ++i)
   {
     if (ranks_of_failed_in_comm_world[i] >= 0
-        && ranks_of_failed_in_comm_world[i] < caf_num_images)
+        && ranks_of_failed_in_comm_world[i] < initial_team_num_images)
     {
       if (image_stati[ranks_of_failed_in_comm_world[i]] == 0)
         image_stati[ranks_of_failed_in_comm_world[i]] = STAT_FAILED_IMAGE;
@@ -581,7 +597,7 @@ failed_stopped_errorhandler_function (MPI_Comm* pcomm, int* perr, ...)
     else
     {
       dprint("Rank of failed image %d out of range of images 0..%d.\n",
-             ranks_of_failed_in_comm_world[i], caf_num_images);
+             ranks_of_failed_in_comm_world[i], initial_team_num_images-1);
     }
   }
 
@@ -898,6 +914,9 @@ PREFIX(init) (int *argc, char ***argv)
                      alive_comm, &alive_request); chk_err(ierr);
 
     image_stati = (int *) calloc(caf_num_images, sizeof(int));
+
+    failed_in_comm_world_group = (MPI_Group *)malloc(sizeof(MPI_Group));
+    *failed_in_comm_world_group = MPI_GROUP_EMPTY;
 #endif
 
 #if MPI_VERSION >= 3
@@ -1546,11 +1565,11 @@ PREFIX(sync_all) (int *stat, char *errmsg, charlen_t errmsg_len)
     explicit_flush();
 #endif
 
-#ifdef WITH_FAILED_IMAGES
-    ierr = MPI_Barrier(alive_comm); chk_err(ierr);
-#else
+//#ifdef WITH_FAILED_IMAGES
+//    ierr = MPI_Barrier(alive_comm); chk_err(ierr);
+//#else
     ierr = MPI_Barrier(CAF_COMM_WORLD); chk_err(ierr);
-#endif
+//#endif
     dprint("MPI_Barrier = %d.\n", err);
     if (ierr == STAT_FAILED_IMAGE)
       err = STAT_FAILED_IMAGE;
@@ -7897,6 +7916,7 @@ PREFIX(image_status) (int image)
     }
     else if (status == MPIX_ERR_PROC_FAILED)
     {
+      // FIXME: add to failed_in_comm_world_group
       image_stati[image - 1] = STAT_FAILED_IMAGE;
     }
     else
@@ -7927,39 +7947,56 @@ PREFIX(failed_images) (gfc_descriptor_t *array,
   int local_kind = kind ? *kind : 4; /* GFC_DEFAULT_INTEGER_KIND = 4*/
 
 #ifdef WITH_FAILED_IMAGES
-  void *mem = calloc(num_images_failed, local_kind);
-  array->base_addr = mem;
-  for (int i = 0; i < caf_num_images; ++i)
+  MPI_Group current_team_group, failed_in_current_team_group;
+  int ierr, num_failed_in_current_team;
+  int *ranks_failed, *ranks_of_failed_in_current_team;
+
+  ierr = MPI_Comm_group(CAF_COMM_WORLD, &current_team_group); chk_err(ierr);
+  ierr = MPI_Group_intersection(*failed_in_comm_world_group, current_team_group, &failed_in_current_team_group);
+  chk_err(ierr);
+  ierr = MPI_Group_size(failed_in_current_team_group, &num_failed_in_current_team); chk_err(ierr);
+  ranks_of_failed_in_current_team = alloca(sizeof(int) * num_failed_in_current_team);
+  ranks_failed = (int *) alloca(sizeof(int) * num_failed_in_current_team);
+  for (int i = 0; i < num_failed_in_current_team; ++i)
   {
-    if (image_stati[i] == STAT_FAILED_IMAGE)
-    {
-      switch (local_kind)
-      {
-        case 1:
-          *(int8_t *)mem = i + 1;
-          break;
-        case 2:
-          *(int16_t *)mem = i + 1;
-          break;
-        case 4:
-          *(int32_t *)mem = i + 1;
-          break;
-        case 8:
-          *(int64_t *)mem = i + 1;
-          break;
-#ifdef HAVE_GFC_INTEGER_16
-        case 16:
-          *(int128t *)mem = i + 1;
-          break;
-#endif
-        default:
-          caf_runtime_error("Unsupported integer kind %1 "
-                            "in caf_failed_images.", local_kind);
-      }
-      mem += local_kind;
-    }
+    ranks_failed[i] = i;
   }
-  array->dim[0]._ubound = num_images_failed - 1;
+  ierr = MPI_Group_translate_ranks(failed_in_current_team_group, num_failed_in_current_team,
+                                   ranks_failed, current_team_group,
+                                   ranks_of_failed_in_current_team);
+  chk_err(ierr);
+  ierr = MPI_Group_free(&current_team_group); chk_err(ierr);
+  ierr = MPI_Group_free(&failed_in_current_team_group); chk_err(ierr);
+  void *mem = calloc(num_failed_in_current_team, local_kind);
+  array->base_addr = mem;
+  for (int i = 0; i < num_failed_in_current_team; ++i)
+  {
+    switch (local_kind)
+    {
+      case 1:
+        *(int8_t *)mem = ranks_of_failed_in_current_team[i] + 1;
+        break;
+      case 2:
+        *(int16_t *)mem = ranks_of_failed_in_current_team[i] + 1;
+        break;
+      case 4:
+        *(int32_t *)mem = ranks_of_failed_in_current_team[i] + 1;
+        break;
+      case 8:
+        *(int64_t *)mem = ranks_of_failed_in_current_team[i] + 1;
+        break;
+#ifdef HAVE_GFC_INTEGER_16
+      case 16:
+        *(int128t *)mem = ranks_of_failed_in_current_team[i] + 1;
+        break;
+#endif
+      default:
+        caf_runtime_error("Unsupported integer kind %1 "
+                          "in caf_failed_images.", local_kind);
+    }
+    mem += local_kind;
+  }
+  array->dim[0]._ubound = num_failed_in_current_team - 1;
 #else
   unsupported_fail_images_message("FAILED_IMAGES()");
   array->dim[0]._ubound = -1;
