@@ -8125,19 +8125,22 @@ redo:
   if (MPI_SUCCESS != flag)
   {
       MPI_Group current_comm_group, failed_group, nonfailed_group;
-      int num_failed_in_group;
+      int num_failed_in_group, result;
       if (MPI_SUCCESS == ierr)
       {
           ierr = MPI_Comm_free(newcomm); chk_err(ierr);
       }
-      // FIXME: don't redo this... 
-      ierr = MPIX_Comm_failure_ack(*current_comm); chk_err(ierr);
-      ierr = MPIX_Comm_failure_get_acked(*current_comm, &failed_group); chk_err(ierr);
+      ierr = MPI_Comm_group(*current_comm, &current_comm_group); chk_err(ierr);
+      ierr = MPI_Group_intersection(current_comm_group, *failed_in_comm_world_group, &failed_group);
       ierr = MPI_Group_size(failed_group, &num_failed_in_group); chk_err(ierr);
-      dprint("%d images failed.\n", num_failed_in_group);
-      ierr = MPI_Group_size(*current_comm, &current_comm_group); chk_err(ierr);
       ierr = MPI_Group_difference(current_comm_group, failed_group, &nonfailed_group); chk_err(ierr);
       ierr = MPI_Comm_create_group(*current_comm, nonfailed_group, 0, newcomm); chk_err(ierr);
+      ierr = MPI_Comm_compare(*current_comm, CAF_COMM_WORLD, &result); chk_err(ierr);
+      if (result != MPI_IDENT)
+      {
+        ierr = MPI_Comm_free(current_comm); chk_err(ierr);
+      }
+      current_comm = newcomm;
       ierr = MPI_Group_free(&current_comm_group); chk_err(ierr);
       ierr = MPI_Group_free(&nonfailed_group); chk_err(ierr);
       ierr = MPI_Group_free(&failed_group); chk_err(ierr);
