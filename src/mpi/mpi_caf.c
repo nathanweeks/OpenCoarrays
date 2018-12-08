@@ -8117,37 +8117,33 @@ void PREFIX(form_team) (int team_id, caf_team_t *team,
   int ierr, flag;
 
 #ifdef WITH_FAILED_IMAGES
-  newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
 redo:
+  newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
   ierr = MPI_Comm_split(*current_comm, team_id, caf_this_image, newcomm);
   flag = (ierr == MPI_SUCCESS);
-  flag = MPIX_Comm_agree(*newcomm, &flag);
+  flag = MPIX_Comm_agree(*current_comm, &flag);
   if (MPI_SUCCESS != flag)
   {
-      MPI_Group current_comm_group, failed_group, nonfailed_group;
-      int num_failed_in_group, result;
+      int result;
       if (MPI_SUCCESS == ierr)
       {
           ierr = MPI_Comm_free(newcomm); chk_err(ierr);
       }
-      ierr = MPI_Comm_group(*current_comm, &current_comm_group); chk_err(ierr);
-      ierr = MPI_Group_intersection(current_comm_group, *failed_in_comm_world_group, &failed_group);
-      ierr = MPI_Group_size(failed_group, &num_failed_in_group); chk_err(ierr);
-      ierr = MPI_Group_difference(current_comm_group, failed_group, &nonfailed_group); chk_err(ierr);
-      ierr = MPI_Comm_create_group(*current_comm, nonfailed_group, 0, newcomm); chk_err(ierr);
-      ierr = MPI_Comm_compare(*current_comm, CAF_COMM_WORLD, &result); chk_err(ierr);
+
+      MPIX_Comm_shrink(*current_comm, newcomm);
+      MPI_Comm_compare(*current_comm, CAF_COMM_WORLD, &result);
       if (result != MPI_IDENT)
       {
         ierr = MPI_Comm_free(current_comm); chk_err(ierr);
+        free(current_comm);
       }
       current_comm = newcomm;
-      ierr = MPI_Group_free(&current_comm_group); chk_err(ierr);
-      ierr = MPI_Group_free(&nonfailed_group); chk_err(ierr);
-      ierr = MPI_Group_free(&failed_group); chk_err(ierr);
       goto redo;
   }
-  ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler);
-  chk_err(ierr);
+  // FIXME: memory leak of current_comm
+  // should be inherited
+  // ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler);
+  // chk_err(ierr);
 #else
   ierr = MPI_Barrier(CAF_COMM_WORLD); chk_err(ierr);
   newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
