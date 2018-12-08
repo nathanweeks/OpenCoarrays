@@ -8113,37 +8113,39 @@ void PREFIX(form_team) (int team_id, caf_team_t *team,
   struct caf_teams_list *tmp;
   void * tmp_team;
   MPI_Comm *newcomm;
-  MPI_Comm *current_comm = &CAF_COMM_WORLD;
+  MPI_Comm current_comm = CAF_COMM_WORLD;
   int ierr, flag;
 
 #ifdef WITH_FAILED_IMAGES
-redo:
   newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
-  ierr = MPI_Comm_split(*current_comm, team_id, caf_this_image, newcomm);
+redo:
+  ierr = MPI_Comm_split(current_comm, team_id, caf_this_image, newcomm);
   flag = (ierr == MPI_SUCCESS);
-  flag = MPIX_Comm_agree(*current_comm, &flag);
+  flag = MPIX_Comm_agree(current_comm, &flag);
   if (MPI_SUCCESS != flag)
   {
+      dprint("FORM TEAM failed\n");
       int result;
       if (MPI_SUCCESS == ierr)
       {
           ierr = MPI_Comm_free(newcomm); chk_err(ierr);
       }
 
-      MPIX_Comm_shrink(*current_comm, newcomm);
-      MPI_Comm_compare(*current_comm, CAF_COMM_WORLD, &result);
+      MPIX_Comm_shrink(current_comm, newcomm);
+      // FIXME: doesn't look like error handler is being inherited in MPICH 3.3?
+      ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler); chk_err(ierr);
+      MPI_Comm_compare(current_comm, CAF_COMM_WORLD, &result);
       if (result != MPI_IDENT)
       {
-        ierr = MPI_Comm_free(current_comm); chk_err(ierr);
-        free(current_comm);
+        ierr = MPI_Comm_free(&current_comm); chk_err(ierr);
       }
-      current_comm = newcomm;
+      current_comm = *newcomm;
       goto redo;
   }
-  // FIXME: memory leak of current_comm
-  // should be inherited
-  // ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler);
-  // chk_err(ierr);
+  dprint("FORM TEAM succeeded\n");
+  // FIXME: doesn't look like error handler is being inherited in MPICH 3.3?
+  ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler);
+  chk_err(ierr);
 #else
   ierr = MPI_Barrier(CAF_COMM_WORLD); chk_err(ierr);
   newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
