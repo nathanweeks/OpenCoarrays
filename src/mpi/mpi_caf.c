@@ -8113,16 +8113,18 @@ void PREFIX(form_team) (int team_id, caf_team_t *team,
   struct caf_teams_list *tmp;
   void * tmp_team;
   MPI_Comm *newcomm;
-  MPI_Comm current_comm = CAF_COMM_WORLD;
+  MPI_Comm *current_comm = &CAF_COMM_WORLD;
   int ierr, flag;
 
 #ifdef WITH_FAILED_IMAGES
   newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
 redo:
-  ierr = MPI_Comm_split(current_comm, team_id, caf_this_image, newcomm);
+  ierr = MPI_Comm_split(*current_comm, team_id, caf_this_image, newcomm);
   flag = (ierr == MPI_SUCCESS);
-  flag = MPIX_Comm_agree(current_comm, &flag);
-  if (MPI_SUCCESS != flag)
+  dprint("Before MPIX_Comm_agree\n");
+  ierr = MPIX_Comm_agree(*current_comm, &flag);
+  dprint("After MPIX_Comm_agree (flag == %d)\n", flag);
+  if (MPI_SUCCESS != ierr || !flag)
   {
       dprint("FORM TEAM failed\n");
       int result;
@@ -8130,22 +8132,21 @@ redo:
       {
           ierr = MPI_Comm_free(newcomm); chk_err(ierr);
       }
-
-      MPIX_Comm_shrink(current_comm, newcomm);
+      MPIX_Comm_shrink(CAF_COMM_WORLD, newcomm);
       // FIXME: doesn't look like error handler is being inherited in MPICH 3.3?
-      ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler); chk_err(ierr);
-      MPI_Comm_compare(current_comm, CAF_COMM_WORLD, &result);
-      if (result != MPI_IDENT)
-      {
-        ierr = MPI_Comm_free(&current_comm); chk_err(ierr);
-      }
-      current_comm = *newcomm;
+//    ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler); chk_err(ierr);
+//    MPI_Comm_compare(current_comm, CAF_COMM_WORLD, &result);
+//    if (result != MPI_IDENT)
+//    {
+//      ierr = MPI_Comm_free(&current_comm); chk_err(ierr);
+//    }
+      current_comm = newcomm;
       goto redo;
   }
-  dprint("FORM TEAM succeeded\n");
+  dprint("FORM TEAM succeeded (*newcomm == %p)\n", *newcomm);
   // FIXME: doesn't look like error handler is being inherited in MPICH 3.3?
-  ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler);
-  chk_err(ierr);
+//  ierr = MPI_Comm_set_errhandler(*newcomm, failed_CAF_COMM_mpi_err_handler);
+//  chk_err(ierr);
 #else
   ierr = MPI_Barrier(CAF_COMM_WORLD); chk_err(ierr);
   newcomm = (MPI_Comm *)calloc(1,sizeof(MPI_Comm));
@@ -8204,6 +8205,16 @@ void PREFIX(change_team) (caf_team_t *team,
   caf_this_image++;
   ierr = MPI_Comm_size(*tmp_comm,&caf_num_images); chk_err(ierr);
   ierr = MPI_Barrier(*tmp_comm); chk_err(ierr);
+#ifdef WITH_FAILED_IMAGES
+  while (ierr != MPI_SUCCESS)
+  {
+      int flag = 1;
+      /* synchronize on active images */
+      dprint("Before MPIX_Comm_agree\n");
+      ierr = MPIX_Comm_agree(*tmp_comm, &flag);
+      dprint("After MPIX_Comm_agree (flag == %d)\n", flag);
+  }
+#endif
 }
 
 MPI_Fint
@@ -8238,6 +8249,16 @@ void PREFIX(end_team) (caf_team_t *team __attribute__((unused)))
   int ierr;
 
   ierr = MPI_Barrier(CAF_COMM_WORLD); chk_err(ierr);
+#ifdef WITH_FAILED_IMAGES
+  while (ierr != MPI_SUCCESS)
+  {
+      int flag = 1;
+      /* synchronize on active images */
+      dprint("Before MPIX_Comm_agree\n");
+      ierr = MPIX_Comm_agree(CAF_COMM_WORLD, &flag);
+      dprint("After MPIX_Comm_agree (flag == %d)\n", flag);
+  }
+#endif
   if (used_teams->prev == NULL)
     caf_runtime_error("END TEAM called on initial team");
 
